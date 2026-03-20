@@ -365,7 +365,10 @@ min-height: 1050px;
         </div>`;
     }
 
-    const txnRef  = get('ref') !== 'N/A' ? get('ref') : get('txnRefNo');
+    let txnRefRaw = get('ref') !== 'N/A' ? get('ref') : get('txnRefNo');
+
+// Add prefix only if value exists
+const txnRef = txnRefRaw && txnRefRaw !== 'N/A' ? `313${txnRefRaw}` : '';
     const txnDate = get('date');
     const pinVal  = get('pin');
     const codeVal = get('payoutCode') !== 'N/A' ? get('payoutCode') : pinVal;
