@@ -21,28 +21,13 @@
             padding: 2rem 1rem;
         }
 
-        .page {
-            background: #fff;
-            width: 850px;
-            padding: 120px 24px 24px;
-            min-height: 1050px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
-        }
-
-        /*
-         * ALIGNMENT RULES
-         * ───────────────────────────────────────────────────────────
-         * Page inner width = 850 - 48 = 802px
-         * Each half = 401px
-         *
-         * LEFT  half: no padding-left  → label = 140px, colon = 12px
-         * RIGHT half: padding-left 6px → label = 140px, colon = 12px
-         *
-         * Using identical label widths + identical colon widths means
-         * ALL colons in the LEFT half form one vertical line, and
-         * ALL colons in the RIGHT half form one vertical line.
-         * ───────────────────────────────────────────────────────────
-         */
+       .page {
+    background: #fff;
+    width: 794px;   /* FIXED A4 WIDTH */
+    padding: 120px 24px 24px;
+min-height: 1050px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
 
         /* ── TXN TOP ROW ── */
         .txn-top {
@@ -102,6 +87,16 @@
         .cfield .ccolon { color: #333; }
         .cfield .cval   { color: #222; line-height: 1.45; }
 
+        /* Address: clamp to 2 lines, wrap naturally (no forced <br>) */
+        #address {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            white-space: normal;
+            word-break: break-word;
+        }
+
         /* ── RIGHT COLUMN: Payment Details ── */
         .col-right {
             display: flex;
@@ -131,8 +126,8 @@
             padding: 3px 0;
             margin: 2px 0;
         }
-        .pfield.total-row .plabel { font-size: 0.88rem; font-weight: 900; }
-        .pfield.total-row .pval   { font-size: 0.92rem; font-weight: 900; }
+        .pfield.total-row .plabel { font-size: 0.88rem; font-weight: 800; }
+        .pfield.total-row .pval   { font-size: 0.92rem; font-weight: 800; }
 
         .pfield.src-purp .pval { text-align: left; }
 
@@ -192,6 +187,15 @@
             body { background: none; padding: 0; }
             .page { box-shadow: none; }
             .download-btn { display: none !important; }
+        }
+
+        /* ── PDF PRINT WRAPPER (injected at download time) ── */
+        .pdf-wrapper {
+            width: 100%;
+            min-height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
     </style>
 </head>
@@ -321,7 +325,6 @@
 
     <!-- FOOTER -->
     <div class="footer">
-        <div style="font-size:0.7rem;color:#666;">Thank you for using Maji Remittance Services.</div>
         <button class="download-btn" id="downloadBtn">&#8595; Download Receipt</button>
     </div>
 
@@ -353,7 +356,6 @@
     const channelRaw   = get('paymentChannel').toUpperCase();
     const isCashPickup = channelRaw.includes('CASH');
 
-    /* Left fields: no extra padding. Right fields: padding-left:6px + same label/colon widths */
     function makeField(label, val, isRight) {
         const cls = isRight ? 'tfield r' : 'tfield';
         return `<div class="${cls}">
@@ -402,11 +404,15 @@
         idVal.textContent   = passportParam !== 'N/A' ? uc(passportParam) : (nationalIdParam !== 'N/A' ? uc(nationalIdParam) : '');
     }
 
+    /* Address: show as plain text, clamped to 2 lines via CSS */
     const addrRaw = get('address');
     const addrEl  = document.getElementById('address');
     if (addrRaw !== 'N/A') {
-        addrEl.innerHTML = uc(addrRaw).replace(/\n/g, '<br>').replace(/,\s*/g, ',<br>');
-    } else { addrEl.textContent = ''; }
+        // Replace newlines with a space so address flows naturally into 2 lines
+        addrEl.textContent = uc(addrRaw).replace(/\n/g, ', ');
+    } else {
+        addrEl.textContent = '';
+    }
 
     const profVal = get('profession');
     document.getElementById('profession').textContent = uc(profVal);
@@ -439,20 +445,59 @@
     document.getElementById('bankAcNo').textContent    = display(get('accountNo') !== 'N/A' ? get('accountNo') : get('bankAcNo'));
     document.getElementById('ifscCode').textContent    = display(get('ifscCode') !== 'N/A' ? get('ifscCode') : get('routingNumber'));
 
-    /* Download */
-    document.getElementById('downloadBtn').addEventListener('click', () => {
-        const btn = document.getElementById('downloadBtn');
-        btn.style.display = 'none';
-        html2pdf().set({
-            margin: [6,6,6,6],
-            filename: `Receipt_${txnRef}.pdf`,
-            image: { type:'jpeg', quality:0.98 },
-            html2canvas: { scale:2, useCORS:true },
-            jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
-        }).from(document.getElementById('receiptPage')).save().then(() => {
-            btn.style.display = '';
-        });
+   document.getElementById('downloadBtn').addEventListener('click', () => {
+    const btn = document.getElementById('downloadBtn');
+    const receipt = document.getElementById('receiptPage');
+
+    btn.style.display = 'none';
+
+    // Clone receipt
+    const clone = receipt.cloneNode(true);
+
+    // Remove button in PDF
+    const cloneBtn = clone.querySelector('#downloadBtn');
+    if (cloneBtn) cloneBtn.remove();
+
+    // Perfect A4 size (NO CUT)
+    clone.style.width = '794px';   // A4 width
+    clone.style.margin = '0 auto';
+    clone.style.padding = '40px 20px';
+    clone.style.boxSizing = 'border-box';
+    clone.style.background = '#fff';
+    clone.style.pageBreakInside = 'avoid';
+
+    // Wrapper (important for centering)
+    const wrapper = document.createElement('div');
+    wrapper.style.width = '794px';
+    wrapper.style.margin = '0 auto';
+    wrapper.appendChild(clone);
+
+    document.body.appendChild(wrapper);
+
+    html2pdf().set({
+        margin: 0,
+        filename: `Receipt_${Date.now()}.pdf`,
+        image: { type: 'jpeg', quality: 1 },
+        html2canvas: {
+            scale: 2,
+            useCORS: true,
+            scrollY: 0
+        },
+        jsPDF: {
+            unit: 'px',
+            format: [794, 1123], // exact A4
+            orientation: 'portrait'
+        },
+        pagebreak: { mode: ['avoid-all'] }
+    })
+    .from(wrapper)
+    .save()
+    .then(() => {
+        document.body.removeChild(wrapper);
+        btn.style.display = '';
     });
+});
 </script>
 </body>
 </html>
+
