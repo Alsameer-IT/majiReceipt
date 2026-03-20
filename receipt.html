@@ -117,8 +117,8 @@ min-height: 1050px;
         .pfield .pcolon { color: #333; }
         .pfield .pval   { color: #222; text-align: right; }
 
-        .pfield.payout-amount .plabel { font-size: 0.82rem; font-weight: 800; }
-        .pfield.payout-amount .pval   { font-size: 0.96rem; font-weight: 800; color: #111; }
+        .pfield.payout-amount .plabel { font-size: 0.82rem; font-weight: 780; }
+        .pfield.payout-amount .pval   { font-size: 0.96rem; font-weight: 780; color: #111; }
 
         .pfield.total-row {
             border-top: 1.5px solid #555;
@@ -126,8 +126,8 @@ min-height: 1050px;
             padding: 3px 0;
             margin: 2px 0;
         }
-        .pfield.total-row .plabel { font-size: 0.88rem; font-weight: 800; }
-        .pfield.total-row .pval   { font-size: 0.92rem; font-weight: 800; }
+        .pfield.total-row .plabel { font-size: 0.88rem; font-weight: 780; }
+        .pfield.total-row .pval   { font-size: 0.92rem; font-weight: 780; }
 
         .pfield.src-purp .pval { text-align: left; }
 
@@ -404,12 +404,33 @@ min-height: 1050px;
         idVal.textContent   = passportParam !== 'N/A' ? uc(passportParam) : (nationalIdParam !== 'N/A' ? uc(nationalIdParam) : '');
     }
 
-    /* Address: show as plain text, clamped to 2 lines via CSS */
+    /* ── ADDRESS REFORMATTER ──
+       Input format:  DISTRICT, VILLAGE, STREET, COUNTRY
+       Example:       BELAIT, KG MUMONG, NO 11 SPG 567 JLN SERIA, BRN
+       Output format: STREET, VILLAGE, COUNTRY
+       Example:       NO 11 SPG 567 JLN SERIA, KG MUMONG, BRN
+       Any address with fewer than 4 parts is displayed as-is.
+    */
     const addrRaw = get('address');
     const addrEl  = document.getElementById('address');
     if (addrRaw !== 'N/A') {
-        // Replace newlines with a space so address flows naturally into 2 lines
-        addrEl.textContent = uc(addrRaw).replace(/\n/g, ', ');
+        const addrUC = uc(addrRaw).replace(/\n/g, ', ');
+        const parts  = addrUC.split(',').map(s => s.trim()).filter(Boolean);
+        let formatted;
+        if (parts.length >= 4) {
+            // parts[0] = DISTRICT  (drop)
+            // parts[1] = VILLAGE
+            // parts[2] = STREET
+            // parts[3] = COUNTRY CODE
+            const street  = parts[2];
+            const village = parts[1];
+            const rawCountry = parts[3];
+            const country = rawCountry === 'BRN' ? 'BRUNEI DARUSSALAM' : rawCountry;
+            formatted = `${street}, ${village}, ${country}`;
+        } else {
+            formatted = addrUC;
+        }
+        addrEl.textContent = formatted;
     } else {
         addrEl.textContent = '';
     }
@@ -500,4 +521,3 @@ min-height: 1050px;
 </script>
 </body>
 </html>
-
