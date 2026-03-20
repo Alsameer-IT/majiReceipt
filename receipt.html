@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maji Remittance Receipt</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            letter-spacing: 0.2px;
+            -webkit-font-smoothing: antialiased;
+            background: #e8e8e8;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        .page {
+            background: #fff;
+            width: 850px;
+            padding: 120px 24px 24px;
+            min-height: 1050px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        }
+
+        /*
+         * ALIGNMENT RULES
+         * ───────────────────────────────────────────────────────────
+         * Page inner width = 850 - 48 = 802px
+         * Each half = 401px
+         *
+         * LEFT  half: no padding-left  → label = 140px, colon = 12px
+         * RIGHT half: padding-left 6px → label = 140px, colon = 12px
+         *
+         * Using identical label widths + identical colon widths means
+         * ALL colons in the LEFT half form one vertical line, and
+         * ALL colons in the RIGHT half form one vertical line.
+         * ───────────────────────────────────────────────────────────
+         */
+
+        /* ── TXN TOP ROW ── */
+        .txn-top {
+            border-top: 1.5px solid #555;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            padding: 4px 0;
+        }
+
+        .tfield {
+            display: grid;
+            grid-template-columns: 140px 12px 1fr;
+            align-items: baseline;
+            font-size: 0.78rem;
+            padding: 2px 0;
+        }
+        .tfield.r {
+            padding-left: 6px;
+            grid-template-columns: 140px 12px 1fr;
+        }
+        .tfield .tlabel { font-weight: 700; color: #111; }
+        .tfield .tcolon { color: #333; }
+        .tfield .tval   { color: #222; }
+
+        /* ── SECTION HEADERS ── */
+        .section-headers {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-bottom: 1.5px solid #555;
+            padding: 3px 0;
+            margin-top: 4px;
+        }
+        .section-headers .sh { font-size: 0.88rem; font-weight: 700; color: #111; }
+        .section-headers .sh.r { padding-left: 6px; }
+
+        /* ── MAIN TWO-COLUMN BODY ── */
+        .main-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            padding: 6px 0 8px;
+        }
+
+        /* ── LEFT COLUMN: Customer Details ── */
+        .col-left {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .cfield {
+            display: grid;
+            grid-template-columns: 140px 12px 1fr;
+            align-items: flex-start;
+            font-size: 0.76rem;
+        }
+        .cfield .clabel { font-weight: 700; color: #111; }
+        .cfield .ccolon { color: #333; }
+        .cfield .cval   { color: #222; line-height: 1.45; }
+
+        /* ── RIGHT COLUMN: Payment Details ── */
+        .col-right {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+            padding-left: 6px;
+        }
+
+        .pfield {
+            display: grid;
+            grid-template-columns: 140px 12px 1fr;
+            align-items: baseline;
+            font-size: 0.76rem;
+            padding: 2px 0;
+        }
+        .pfield .plabel { font-weight: 700; color: #111; }
+        .pfield .pcolon { color: #333; }
+        .pfield .pval   { color: #222; text-align: right; }
+
+        .pfield.payout-amount .plabel { font-size: 0.82rem; font-weight: 800; }
+        .pfield.payout-amount .pval   { font-size: 0.96rem; font-weight: 800; color: #111; }
+
+        .pfield.total-row {
+            border-top: 1.5px solid #555;
+            border-bottom: 1.5px solid #555;
+            padding: 3px 0;
+            margin: 2px 0;
+        }
+        .pfield.total-row .plabel { font-size: 0.88rem; font-weight: 900; }
+        .pfield.total-row .pval   { font-size: 0.92rem; font-weight: 900; }
+
+        .pfield.src-purp .pval { text-align: left; }
+
+        /* ── BENEFICIARY SECTION ── */
+        .bene-header {
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: #111;
+            padding: 5px 0 3px;
+        }
+
+        .bene-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-top: 1.5px solid #555;
+            border-bottom: 1.5px solid #555;
+            padding: 6px 0;
+            gap: 3px 0;
+        }
+
+        .bfield {
+            display: grid;
+            grid-template-columns: 140px 12px 1fr;
+            align-items: flex-start;
+            font-size: 0.76rem;
+        }
+        .bfield.r {
+            padding-left: 6px;
+            grid-template-columns: 140px 12px 1fr;
+        }
+        .bfield .blabel { font-weight: 700; color: #111; }
+        .bfield .bcolon { color: #333; }
+        .bfield .bval   { color: #222; }
+
+        /* ── FOOTER ── */
+        .footer {
+            margin-top: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .download-btn {
+            background: #1a5c9e;
+            color: #fff;
+            border: none;
+            padding: 7px 20px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .download-btn:hover { background: #134880; }
+        .hidden { display: none !important; }
+
+        @media print {
+            body { background: none; padding: 0; }
+            .page { box-shadow: none; }
+            .download-btn { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="page" id="receiptPage">
+
+    <!-- TXN TOP ROW -->
+    <div class="txn-top" id="txnTopGrid"></div>
+
+    <!-- SECTION HEADERS -->
+    <div class="section-headers">
+        <div class="sh">Customer Details</div>
+        <div class="sh r">Payment Details</div>
+    </div>
+
+    <!-- MAIN BODY -->
+    <div class="main-body">
+
+        <!-- LEFT: Customer Details -->
+        <div class="col-left">
+            <div class="cfield">
+                <span class="clabel">Customer Name</span>
+                <span class="ccolon">:</span>
+                <span class="cval" id="customerName"></span>
+            </div>
+            <div class="cfield" id="nationalIdRow">
+                <span class="clabel" id="idLabel">National ID</span>
+                <span class="ccolon">:</span>
+                <span class="cval" id="nationalId"></span>
+            </div>
+            <div class="cfield">
+                <span class="clabel">Mobile No</span>
+                <span class="ccolon">:</span>
+                <span class="cval" id="customerMobile"></span>
+            </div>
+            <div class="cfield" id="addressRow">
+                <span class="clabel">Address</span>
+                <span class="ccolon">:</span>
+                <span class="cval" id="address"></span>
+            </div>
+            <div class="cfield">
+                <span class="clabel">Nationality</span>
+                <span class="ccolon">:</span>
+                <span class="cval" id="nationality"></span>
+            </div>
+            <div class="cfield" id="professionRow">
+                <span class="clabel">Profession</span>
+                <span class="ccolon">:</span>
+                <span class="cval" id="profession"></span>
+            </div>
+        </div>
+
+        <!-- RIGHT: Payment Details -->
+        <div class="col-right">
+            <div class="pfield payout-amount">
+                <span class="plabel">Payout Amount</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="payoutAmount"></span>
+            </div>
+            <div class="pfield">
+                <span class="plabel">Fx Rate</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="fxRate"></span>
+            </div>
+            <div class="pfield">
+                <span class="plabel">Pay In Amount</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="payInAmount"></span>
+            </div>
+            <div class="pfield">
+                <span class="plabel">Fee</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="fee"></span>
+            </div>
+            <div class="pfield total-row">
+                <span class="plabel">Total</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="total"></span>
+            </div>
+            <div class="pfield src-purp">
+                <span class="plabel">Source of Fund</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="sourceOfFund"></span>
+            </div>
+            <div class="pfield src-purp">
+                <span class="plabel">Purpose of Txn</span>
+                <span class="pcolon">:</span>
+                <span class="pval" id="purposeOfTxn"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- BENEFICIARY SECTION -->
+    <div class="bene-header">Beneficiary Details</div>
+    <div class="bene-body">
+        <div class="bfield">
+            <span class="blabel">Name</span>
+            <span class="bcolon">:</span>
+            <span class="bval" id="beneName"></span>
+        </div>
+        <div class="bfield r">
+            <span class="blabel">Bank Name</span>
+            <span class="bcolon">:</span>
+            <span class="bval" id="bankName"></span>
+        </div>
+        <div class="bfield">
+            <span class="blabel">Mobile No</span>
+            <span class="bcolon">:</span>
+            <span class="bval" id="beneMobile"></span>
+        </div>
+        <div class="bfield r">
+            <span class="blabel">Bank A/C No</span>
+            <span class="bcolon">:</span>
+            <span class="bval" id="bankAcNo"></span>
+        </div>
+        <div class="bfield">
+            <span class="blabel">Country</span>
+            <span class="bcolon">:</span>
+            <span class="bval" id="beneCountry"></span>
+        </div>
+        <div class="bfield r">
+            <span class="blabel">IFSC/Bank Code</span>
+            <span class="bcolon">:</span>
+            <span class="bval" id="ifscCode"></span>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <div style="font-size:0.7rem;color:#666;">Thank you for using Maji Remittance Services.</div>
+        <button class="download-btn" id="downloadBtn">&#8595; Download Receipt</button>
+    </div>
+
+</div>
+
+<script>
+    const p   = new URLSearchParams(window.location.search);
+    const get = (key) => (p.get(key) || '').trim() || 'N/A';
+    const display = (val) => val === 'N/A' ? '' : val;
+    const uc  = (s)   => s === 'N/A' ? '' : s.toUpperCase();
+
+    const addCommas = (str) => {
+        if (!str || str === 'N/A') return '';
+        const clean = str.replace(/,/g, '');
+        const parts = clean.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        return parts.join('.');
+    };
+
+    const currencyMap = {
+        bangladesh:'BDT', india:'INR', pakistan:'PKR', philippines:'PHP',
+        indonesia:'IDR', thailand:'THB', nepal:'NPR', 'sri lanka':'LKR',
+        china:'CNY', vietnam:'VND', malaysia:'MYR', singapore:'SGD',
+        uae:'AED', japan:'JPY', 'south korea':'KRW', uk:'GBP', 'united kingdom':'GBP'
+    };
+
+    const payoutCountryRaw = get('payoutCountry');
+    const currency = currencyMap[payoutCountryRaw.toLowerCase().trim()] || 'BDT';
+    const channelRaw   = get('paymentChannel').toUpperCase();
+    const isCashPickup = channelRaw.includes('CASH');
+
+    /* Left fields: no extra padding. Right fields: padding-left:6px + same label/colon widths */
+    function makeField(label, val, isRight) {
+        const cls = isRight ? 'tfield r' : 'tfield';
+        return `<div class="${cls}">
+            <span class="tlabel">${label}</span>
+            <span class="tcolon">:</span>
+            <span class="tval">${val === 'N/A' ? '' : val}</span>
+        </div>`;
+    }
+
+    const txnRef  = get('ref') !== 'N/A' ? get('ref') : get('txnRefNo');
+    const txnDate = get('date');
+    const pinVal  = get('pin');
+    const codeVal = get('payoutCode') !== 'N/A' ? get('payoutCode') : pinVal;
+    const txnGrid = document.getElementById('txnTopGrid');
+
+    if (isCashPickup) {
+        txnGrid.innerHTML =
+            makeField('Txn Ref No',     txnRef,     false) +
+            makeField('Payout Channel', channelRaw, true)  +
+            makeField('Date',           txnDate,    false) +
+            makeField('Payout Code',    codeVal,    true)  +
+            `<div></div>` +
+            makeField('Payout Pin',     pinVal,     true);
+    } else {
+        txnGrid.innerHTML =
+            makeField('Txn Ref No',     txnRef,     false) +
+            makeField('Payout Channel', channelRaw, true)  +
+            makeField('Date',           txnDate,    false) +
+            makeField('Payout Code',    codeVal,    true);
+    }
+
+    /* Customer */
+    document.getElementById('customerName').textContent   = uc(get('senderName'));
+    document.getElementById('customerMobile').textContent = display(get('senderMobile') !== 'N/A' ? get('senderMobile') : get('customerMobile'));
+    document.getElementById('nationality').textContent    = uc(get('nationality') !== 'N/A' ? get('nationality') : payoutCountryRaw);
+
+    const idLabel         = document.getElementById('idLabel');
+    const idVal           = document.getElementById('nationalId');
+    const nationalIdParam = get('nationalId');
+    const passportParam   = get('passport');
+    if (isCashPickup) {
+        idLabel.textContent = 'National ID';
+        idVal.textContent   = nationalIdParam !== 'N/A' ? uc(nationalIdParam) : '';
+    } else {
+        idLabel.textContent = 'Passport';
+        idVal.textContent   = passportParam !== 'N/A' ? uc(passportParam) : (nationalIdParam !== 'N/A' ? uc(nationalIdParam) : '');
+    }
+
+    const addrRaw = get('address');
+    const addrEl  = document.getElementById('address');
+    if (addrRaw !== 'N/A') {
+        addrEl.innerHTML = uc(addrRaw).replace(/\n/g, '<br>').replace(/,\s*/g, ',<br>');
+    } else { addrEl.textContent = ''; }
+
+    const profVal = get('profession');
+    document.getElementById('profession').textContent = uc(profVal);
+    if (profVal === 'N/A') document.getElementById('professionRow').classList.add('hidden');
+
+    /* Payment */
+    const rawPayout = get('amount') !== 'N/A' ? get('amount') : '';
+    document.getElementById('payoutAmount').textContent = rawPayout ? `${addCommas(rawPayout)} ${currency}` : '';
+
+    const fxRaw = get('exchangeRate').replace(/\s*[A-Z]{3}$/, '');
+    document.getElementById('fxRate').textContent = fxRaw && fxRaw !== 'N/A' ? `${addCommas(fxRaw)} ${currency}` : '';
+
+    const payInClean = (p.get('payInAmount') || '').replace(/\s*BND$/i, '').trim();
+    document.getElementById('payInAmount').textContent = payInClean ? `${addCommas(payInClean)} BND` : '';
+
+    const feeClean = (p.get('serviceCharge') || '').replace(/\s*BND$/i, '').trim();
+    document.getElementById('fee').textContent = feeClean ? `${addCommas(feeClean)} BND` : '';
+
+    const totalClean = (p.get('totalAmount') || '').replace(/\s*BND$/i, '').trim();
+    document.getElementById('total').textContent = totalClean ? `${addCommas(totalClean)} BND` : '';
+
+    document.getElementById('sourceOfFund').textContent = uc(get('source'));
+    document.getElementById('purposeOfTxn').textContent = uc(get('purpose'));
+
+    /* Beneficiary */
+    document.getElementById('beneName').textContent    = uc(get('beneficiaryName'));
+    document.getElementById('beneMobile').textContent  = display(get('beneficiaryMobile'));
+    document.getElementById('beneCountry').textContent = uc(payoutCountryRaw);
+    document.getElementById('bankName').textContent    = uc(get('bankName'));
+    document.getElementById('bankAcNo').textContent    = display(get('accountNo') !== 'N/A' ? get('accountNo') : get('bankAcNo'));
+    document.getElementById('ifscCode').textContent    = display(get('ifscCode') !== 'N/A' ? get('ifscCode') : get('routingNumber'));
+
+    /* Download */
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+        const btn = document.getElementById('downloadBtn');
+        btn.style.display = 'none';
+        html2pdf().set({
+            margin: [6,6,6,6],
+            filename: `Receipt_${txnRef}.pdf`,
+            image: { type:'jpeg', quality:0.98 },
+            html2canvas: { scale:2, useCORS:true },
+            jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
+        }).from(document.getElementById('receiptPage')).save().then(() => {
+            btn.style.display = '';
+        });
+    });
+</script>
+</body>
+</html>
