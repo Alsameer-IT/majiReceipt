@@ -139,7 +139,8 @@
             <div class="section">
                 <div class="section-title">Receipt Metadata</div>
                 <div class="detail-row">
-                    <div class="detail-key">Transaction No:</div>
+                    <!-- Label changes dynamically to "Txn No" or "Receipt No" -->
+                    <div class="detail-key" id="txnNoLabel">Transaction No:</div>
                     <div class="detail-value" id="txnNo"></div>
                 </div>
                 <div class="detail-row">
@@ -282,7 +283,6 @@
                 populateReceipt(extractedData);
                 receiptContainer.style.display = 'block';
                 
-                // Check if payout country is valid
                 const payoutCountry = extractedData.payoutCountry ? extractedData.payoutCountry.trim().toLowerCase() : '';
                 if (payoutCountry && payoutCountry !== 'n/a') {
                     downloadBtn.disabled = false;
@@ -323,6 +323,7 @@
             downloadBtn.title = 'Upload a valid PDF to enable download';
             document.querySelectorAll('.detail-value').forEach(el => el.textContent = '');
             document.getElementById('totalAmount').textContent = '';
+            document.getElementById('txnNoLabel').textContent = 'Transaction No:';
             countryError.style.display = 'none';
         });
         
@@ -333,23 +334,31 @@
             const textContent = await page.getTextContent();
             const textItems = textContent.items.map(item => item.str);
             
-            // Join text items with line breaks to preserve structure
             let text = textItems.join('\n');
-            
-            // Normalize text to handle inconsistent spacing
             text = text.replace(/\s*:\s*/g, ': ').replace(/\n\s+/g, '\n');
             
-            // Log the full text for debugging
             console.log('Full extracted text:', text);
             
-            // Extract receipt metadata
+            // ── FIXED: Extract BOTH "Txn No" and "Receipt No" patterns ──
+            // Try "Txn No" first, then fall back to "Receipt No"
+            let txnNoMatch = text.match(/Txn\s*No:?\s*(\S+)/i);
+            let txnNoLabel = 'Txn No';
+            if (!txnNoMatch) {
+                txnNoMatch = text.match(/Receipt\s*No:?\s*(\S+)/i);
+                if (txnNoMatch) txnNoLabel = 'Receipt No';
+            }
+            // Also try generic "Ref No" or "Trans No" as additional fallbacks
+            if (!txnNoMatch) {
+                txnNoMatch = text.match(/(?:Ref|Trans|Reference|Transaction)\s*No:?\s*(\S+)/i);
+                if (txnNoMatch) txnNoLabel = 'Ref No';
+            }
+
             const topLeftDateMatch = text.match(/^\d{1,2}\/\d{1,2}\/\d{2},\s*\d{1,2}:\d{2}\s*(?:AM|PM)/im);
-            const txnNoMatch = text.match(/Txn\s*No:?\s*(\d+)/i);
             const paymentChannelMatch = text.match(/Payment Channel: ([^\n]+)/i);
             const pinMatch = text.match(/(?:^|\n)\s*Pin\s*:+\s*([A-Za-z0-9]+)/i);
             const dateMatch = text.match(/Date: (\d{2}-\d{2}-\d{4})/i);
             
-            // Log Pin extraction for debugging
+            console.log('Txn/Receipt No Match:', txnNoMatch, '| Label:', txnNoLabel);
             console.log('Pin Match:', pinMatch);
             
             // Extract sender details
@@ -369,10 +378,7 @@
             const nationalIdMatch = senderSection.match(/(?:National ID|Passport): ([^\n]+)/i);
             const nationalityMatch = senderSection.match(/Nationality: ([^\n]+)/i);
             const professionMatch = senderSection.match(/Profession: ([^\n]+)/i);
-            const senderMobileMatch = senderSection.match(/Mobile No: (\d+)/i) || 
-                                    senderSection.match(/Mobile\s*No: (\d+)/i);
-            
-            const senderName = senderNameMatch ? senderNameMatch[1].trim() : '';
+            const senderMobileMatch = senderSection.match(/Mobile\s*No: (\d+)/i);
             
             // Extract beneficiary details
             const beneficiarySectionMatch = text.match(/Beneficary Details([\s\S]*?)(?=Payout\s*(?:Amount|Country)|$)/i);
@@ -396,7 +402,6 @@
             
             for (let i = 0; i < lines.length && fieldIndex < 5; i++) {
                 let line = lines[i].trim();
-                
                 if (!line) continue;
                 
                 console.log(`Processing Beneficiary Line ${i} (fieldIndex=${fieldIndex}): ${line}`);
@@ -417,94 +422,64 @@
                     expectingValue = true;
                 } else if (fieldIndex === 0 && line.match(/Name:/i)) {
                     const nameMatch = line.match(/Name: ([^\n]+)/i);
-                    if (nameMatch) {
-                        beneficiaryData.name = nameMatch[1].trim();
-                        fieldIndex++;
-                    }
+                    if (nameMatch) { beneficiaryData.name = nameMatch[1].trim(); fieldIndex++; }
                 } else if (fieldIndex === 1 && line.match(/(?:Bank|Bank Name):/i)) {
                     const bankMatch = line.match(/(?:Bank|Bank Name): ([^\n]+)/i);
-                    if (bankMatch) {
-                        beneficiaryData.bankName = bankMatch[1].trim();
-                        fieldIndex++;
-                    }
+                    if (bankMatch) { beneficiaryData.bankName = bankMatch[1].trim(); fieldIndex++; }
                 } else if (fieldIndex === 1 && !line.match(/(?:Bank|Bank Name):/i) && line.match(/[A-Z\s]+/)) {
-                    beneficiaryData.bankName = line.trim();
-                    fieldIndex++;
+                    beneficiaryData.bankName = line.trim(); fieldIndex++;
                 } else if (fieldIndex === 2 && line.match(/Account No:/i)) {
                     const accountMatch = line.match(/Account No: ([^\n]+)/i);
-                    if (accountMatch) {
-                        beneficiaryData.accountNo = accountMatch[1].trim();
-                        lastAccountNo = beneficiaryData.accountNo;
-                        fieldIndex++;
-                    }
+                    if (accountMatch) { beneficiaryData.accountNo = accountMatch[1].trim(); lastAccountNo = beneficiaryData.accountNo; fieldIndex++; }
                 } else if (fieldIndex === 2 && line.match(/\d+/)) {
-                    beneficiaryData.accountNo = line.trim();
-                    lastAccountNo = beneficiaryData.accountNo;
-                    fieldIndex++;
+                    beneficiaryData.accountNo = line.trim(); lastAccountNo = beneficiaryData.accountNo; fieldIndex++;
                 } else if (fieldIndex === 3 && line.match(/(?:IFSC(?:\/Bank)?\s*Code|Branch\s*Code|Bank\s*Code|IFSC):/i)) {
                     const ifscMatch = line.match(/(?:IFSC(?:\/Bank)?\s*Code|Branch\s*Code|Bank\s*Code|IFSC): ([^\n]+)/i);
                     if (ifscMatch) {
                         const potentialIfsc = ifscMatch[1].trim();
-                        console.log(`Found potential IFSC code with label: ${potentialIfsc}`);
                         if (potentialIfsc !== lastAccountNo && potentialIfsc.length > 1 && !potentialIfsc.match(/mobile/i)) {
                             beneficiaryData.ifscCode = potentialIfsc;
-                            // Split IFSC/Bank Code into branch name and routing number
                             const ifscParts = potentialIfsc.split(/\s+/);
                             if (ifscParts.length >= 2) {
-                                // The last part is the routing number
                                 beneficiaryData.routingNumber = ifscParts[ifscParts.length - 1];
-                                // Everything before the last part is the branch name
                                 beneficiaryData.branchName = ifscParts.slice(0, -1).join(' ');
                             }
-                        } else {
-                            console.log('IFSC code matches account number, is too short, or contains "mobile", keeping as N/A');
                         }
                         fieldIndex++;
                     }
                 } else if (fieldIndex === 3 && !line.match(/(?:IFSC(?:\/Bank)?\s*Code|Branch\s*Code|Bank\s*Code|IFSC):/i)) {
                     const potentialIfsc = line.trim();
-                    console.log(`Found potential IFSC code without label: ${potentialIfsc}`);
                     if (potentialIfsc !== lastAccountNo && potentialIfsc.length > 1 && !potentialIfsc.match(/mobile/i)) {
                         beneficiaryData.ifscCode = potentialIfsc;
-                        // Split IFSC/Bank Code into branch name and routing number
                         const ifscParts = potentialIfsc.split(/\s+/);
                         if (ifscParts.length >= 2) {
                             beneficiaryData.routingNumber = ifscParts[ifscParts.length - 1];
                             beneficiaryData.branchName = ifscParts.slice(0, -1).join(' ');
                         }
-                    } else {
-                        console.log('Potential IFSC code matches account number, is too short, or contains "mobile", keeping as N/A');
                     }
                     fieldIndex++;
                 } else if (fieldIndex === 4 && line.match(/Mobile No:/i)) {
                     const mobileMatch = line.match(/Mobile No: (\d+)/i);
                     if (mobileMatch) {
                         const potentialMobile = mobileMatch[1].trim();
-                        console.log(`Found potential Mobile No with label: ${potentialMobile}`);
                         if (potentialMobile !== lastAccountNo && /^\d+$/.test(potentialMobile)) {
                             beneficiaryData.mobileNo = potentialMobile;
-                        } else {
-                            console.log('Mobile No matches account number or is not numeric, keeping as N/A');
                         }
                         fieldIndex++;
                     }
                 } else if (fieldIndex === 4 && line.match(/\d+/)) {
                     const potentialMobile = line.trim();
-                    console.log(`Found potential Mobile No without label: ${potentialMobile}`);
                     if (potentialMobile !== lastAccountNo && /^\d+$/.test(potentialMobile)) {
                         beneficiaryData.mobileNo = potentialMobile;
-                    } else {
-                        console.log('Potential Mobile No matches account number or is not numeric, keeping as N/A');
                     }
                     fieldIndex++;
                 }
             }
             
+            // Fallbacks for beneficiary
             if (!beneficiaryData.name) {
                 const nameMatch = text.match(/Beneficary Details[\s\S]*?Name[\s\S]*?: ([^\n]+)/i);
-                if (nameMatch) {
-                    beneficiaryData.name = nameMatch[1].trim();
-                }
+                if (nameMatch) beneficiaryData.name = nameMatch[1].trim();
             }
             if (!beneficiaryData.bankName) {
                 const bankMatch = text.match(/Beneficary Details[\s\S]*?(?:Bank|Bank Name): ([^\n]+)/i);
@@ -518,7 +493,6 @@
                 const ifscMatch = text.match(/Beneficary Details[\s\S]*?(?:IFSC(?:\/Bank)?\s*Code|Branch\s*Code|Bank\s*Code|IFSC): ([^\n]+)/i);
                 if (ifscMatch) {
                     const potentialIfsc = ifscMatch[1].trim();
-                    console.log(`Fallback IFSC code found: ${potentialIfsc}`);
                     if (potentialIfsc !== beneficiaryData.accountNo && potentialIfsc.length > 1 && !potentialIfsc.match(/mobile/i)) {
                         beneficiaryData.ifscCode = potentialIfsc;
                         const ifscParts = potentialIfsc.split(/\s+/);
@@ -526,8 +500,6 @@
                             beneficiaryData.routingNumber = ifscParts[ifscParts.length - 1];
                             beneficiaryData.branchName = ifscParts.slice(0, -1).join(' ');
                         }
-                    } else {
-                        console.log('Fallback IFSC code matches account number, is too short, or contains "mobile", keeping as N/A');
                     }
                 }
             }
@@ -535,7 +507,6 @@
                 const mobileMatch = text.match(/Beneficary Details[\s\S]*?Mobile No: (\d+)/i);
                 if (mobileMatch) {
                     const potentialMobile = mobileMatch[1].trim();
-                    console.log(`Fallback Mobile No found: ${potentialMobile}`);
                     if (potentialMobile !== beneficiaryData.accountNo && /^\d+$/.test(potentialMobile)) {
                         beneficiaryData.mobileNo = potentialMobile;
                     }
@@ -546,15 +517,11 @@
             
             const paymentSectionMatch = text.match(/(?:Payout\s*(?:Amount|Country)|PayoutCountry)([\s\S]*)$/i);
             let paymentSection = paymentSectionMatch ? paymentSectionMatch[1] : text;
-            console.log('Payment Section:', paymentSection);
             
-            let payoutCountryMatch = paymentSection.match(/Payout Country: ([^\n]+)/i);
-            if (!payoutCountryMatch) {
-                payoutCountryMatch = paymentSection.match(/PayoutCountry: ([^\n]+)/i);
-            }
-            if (!payoutCountryMatch) {
-                payoutCountryMatch = text.match(/Payout\s*Country: ([^\n]+)/i) || text.match(/PayoutCountry: ([^\n]+)/i);
-            }
+            let payoutCountryMatch = paymentSection.match(/Payout Country: ([^\n]+)/i)
+                || paymentSection.match(/PayoutCountry: ([^\n]+)/i)
+                || text.match(/Payout\s*Country: ([^\n]+)/i)
+                || text.match(/PayoutCountry: ([^\n]+)/i);
             
             const sourceMatch = paymentSection.match(/Source: ([^\n]+)/i);
             const purposeMatch = paymentSection.match(/Purpose: ([^\n]+)/i);
@@ -568,7 +535,10 @@
             const finalMobileNo = beneficiaryData.mobileNo && /^\d+$/.test(beneficiaryData.mobileNo) ? beneficiaryData.mobileNo : 'N/A';
             
             const extractedData = {
+                // ── Store both the value AND which label was found ──
                 txnNo: txnNoMatch ? txnNoMatch[1].trim() : 'N/A',
+                txnNoLabel: txnNoLabel,   // "Txn No" or "Receipt No" or "Ref No"
+
                 topLeftDate: topLeftDateMatch ? topLeftDateMatch[0].trim() : 'N/A',
                 paymentChannel: paymentChannelMatch ? paymentChannelMatch[1].trim() : 'N/A',
                 pin: pinMatch ? pinMatch[1].trim() : 'N/A',
@@ -607,7 +577,9 @@
         
         function populateReceipt(data) {
             console.log('Data passed to UI:', data);
-            
+
+            // ── Dynamically update the label to show "Txn No" or "Receipt No" ──
+            document.getElementById('txnNoLabel').textContent = (data.txnNoLabel || 'Transaction') + ':';
             document.getElementById('txnNo').textContent = data.txnNo || 'N/A';
             document.getElementById('date').textContent = data.date || 'N/A';
 
@@ -640,12 +612,14 @@
             document.getElementById('downloadBtn').onclick = () => downloadReceipt(data);
         }
 
-        // ── ONLY THIS FUNCTION WAS CHANGED ──
         function downloadReceipt(data) {
             const amountMatch = data.payoutAmount.match(/([\d,]+\.\d{2})/);
             const amount = amountMatch ? amountMatch[1].replace(/,/g, '') : 'N/A';
 
             const receiptUrl = `receipt.html?` + new URLSearchParams({
+                // ── Pass txnNoLabel so receipt.html can also display correct label ──
+                txnNoLabel:        data.txnNoLabel         || 'Txn No',
+
                 // Transaction
                 ref:               data.txnNo              || 'N/A',
                 date:              data.date               || 'N/A',
